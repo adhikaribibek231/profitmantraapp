@@ -127,60 +127,62 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 predictions[target] = model.predict(test[predictors])
             
             predictions_df = pd.DataFrame(predictions, index=test.index)
+            if check_login_status():
+                # Volume Spike Detection
+                st.subheader("Volume Spike Detection")
+                volume_threshold = data['Volume'].quantile(0.95)
+                spikes = data[data['Volume'] > volume_threshold]
+                st.write(f"Detected {len(spikes)} volume spikes.")
+                st.dataframe(spikes[['Volume']])
 
-            # Volume Spike Detection
-            st.subheader("Volume Spike Detection")
-            volume_threshold = data['Volume'].quantile(0.95)
-            spikes = data[data['Volume'] > volume_threshold]
-            st.write(f"Detected {len(spikes)} volume spikes.")
-            st.dataframe(spikes[['Volume']])
+                comparison = test[["Open", "Close" ]].copy()
+                comparison["Predicted_Open"] = predictions_df["Open"]
+                comparison["Predicted_Close"] = predictions_df["Close"]
+                st.write("### Predicted vs Actual Prices for the Last 3 Days")
+                st.dataframe(comparison)
+            
+                accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
+                accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
+                overall_accuracy = 100 - (mean_absolute_percentage_error(test[["Open", "Close"]], predictions_df[["Open", "Close"]]) * 100)
 
-            comparison = test[["Open", "Close" ]].copy()
-            comparison["Predicted_Open"] = predictions_df["Open"]
-            comparison["Predicted_Close"] = predictions_df["Close"]
-            st.write("### Predicted vs Actual Prices for the Last 3 Days")
-            st.dataframe(comparison)
-        
-            accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
-            accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
-            overall_accuracy = 100 - (mean_absolute_percentage_error(test[["Open", "Close"]], predictions_df[["Open", "Close"]]) * 100)
+                st.write("### Model Accuracy Measurement")
+                st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
+                st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
+                st.write(f"- Overall Model Accuracy: {overall_accuracy:.2f}%")
 
-            st.write("### Model Accuracy Measurement")
-            st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
-            st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
-            st.write(f"- Overall Model Accuracy: {overall_accuracy:.2f}%")
-
-            st.write("### Price Trend Predictions Accuracy measurement")
-            previous_close = data.iloc[-4]["Close"] if len(data) > 3 else None
-            for date, row in predictions_df.iterrows():
-                predicted_close = row["Close"]
-                actual_close = test.loc[date, "Close"]
-                if previous_close is not None:
+                st.write("### Price Trend Predictions Accuracy measurement")
+                previous_close = data.iloc[-4]["Close"] if len(data) > 3 else None
+                for date, row in predictions_df.iterrows():
+                    predicted_close = row["Close"]
+                    actual_close = test.loc[date, "Close"]
+                    if previous_close is not None:
+                        trend = "Increase" if predicted_close > previous_close else "Decrease"
+                        correct_prediction = (trend == "Increase" and actual_close > previous_close) or (trend == "Decrease" and actual_close < previous_close)
+                        correctness = "✅ Correct" if correct_prediction else "❌ Incorrect"
+                        st.write(f"**{date.date()}**: Predicted Close: {predicted_close:.2f}, Trend: {trend}, Actual Close: {actual_close:.2f}, Prediction: {correctness}")
+                    previous_close = actual_close
+                        
+                # Predict next number of days
+                            # Select number of days for prediction
+                num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
+                num_days = st.number_input("Or enter number of days", min_value=1, max_value=30, value=num_days)
+                
+                # Predict next number of days
+                future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
+                future_predictions = {}
+                for target in ["Open", "Close"]:
+                    future_predictions[target] = models[target].predict(data[predictors].iloc[-3:].mean().values.reshape(1, -1))
+                
+                st.write("### Price Trend Predictions for Next selected number of Days") 
+                previous_close = data.iloc[-1]["Close"]
+                previous_open = data.iloc[-1]["Open"]
+                for i, date in enumerate(future_dates):
+                    predicted_open = future_predictions["Open"][0] + (i * 0.005 * previous_open)  # Slight variation simulation
+                    predicted_close = future_predictions["Close"][0] + (i * 0.01 * previous_close)  # Slight variation simulation
                     trend = "Increase" if predicted_close > previous_close else "Decrease"
-                    correct_prediction = (trend == "Increase" and actual_close > previous_close) or (trend == "Decrease" and actual_close < previous_close)
-                    correctness = "✅ Correct" if correct_prediction else "❌ Incorrect"
-                    st.write(f"**{date.date()}**: Predicted Close: {predicted_close:.2f}, Trend: {trend}, Actual Close: {actual_close:.2f}, Prediction: {correctness}")
-                previous_close = actual_close
-                    
-            # Predict next number of days
-                        # Select number of days for prediction
-            num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
-            num_days = st.number_input("Or enter number of days", min_value=1, max_value=30, value=num_days)
-            
-            # Predict next number of days
-            future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-            future_predictions = {}
-            for target in ["Open", "Close"]:
-                future_predictions[target] = models[target].predict(data[predictors].iloc[-3:].mean().values.reshape(1, -1))
-            
-            st.write("### Price Trend Predictions for Next selected number of Days") 
-            previous_close = data.iloc[-1]["Close"]
-            previous_open = data.iloc[-1]["Open"]
-            for i, date in enumerate(future_dates):
-                predicted_open = future_predictions["Open"][0] + (i * 0.005 * previous_open)  # Slight variation simulation
-                predicted_close = future_predictions["Close"][0] + (i * 0.01 * previous_close)  # Slight variation simulation
-                trend = "Increase" if predicted_close > previous_close else "Decrease"
-                st.write(f"**{date.date()}**: Predicted Open: {predicted_open:.2f}, Predicted Close: {predicted_close:.2f}, Trend: {trend}")
-                previous_open = predicted_open
-                previous_close = predicted_close
+                    st.write(f"**{date.date()}**: Predicted Open: {predicted_open:.2f}, Predicted Close: {predicted_close:.2f}, Trend: {trend}")
+                    previous_open = predicted_open
+                    previous_close = predicted_close
+            if not check_login_status():
+                st.info("Please log in to see more content.")
 
