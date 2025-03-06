@@ -10,39 +10,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_percentage_error
 from scraper import scrape_stock_data  # Import the scraping function
 
+from navbar import navbar
+
 st.set_page_config(page_title="Home", page_icon="🏠", layout="centered")
 
-st.markdown(
-    """
-    <style>
-        .nav-container {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            background-color: #f0f0f0;
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# Navigation bar
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🏠 Home"):
-        st.switch_page("home.py")
-
-with col2:
-    if st.button("🔑 Login"):
-        st.switch_page("/pages/login.py")
-
-with col3:
-    if st.button("📝 Register"):
-        st.switch_page("/pages/register.py")
+# Show navbar
+navbar()
 
 def get_available_stocks():
     stock_dir = "Stock/"
@@ -127,6 +100,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 predictions[target] = model.predict(test[predictors])
             
             predictions_df = pd.DataFrame(predictions, index=test.index)
+            st.title("Advanced Features")
             if check_login_status():
                 # Volume Spike Detection
                 st.subheader("Volume Spike Detection")
