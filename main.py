@@ -61,21 +61,55 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
         if not required_columns.issubset(data.columns):
             st.error("CSV file is missing required columns.")
         else:
-            data.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "traded_quantity": "Volume"}, inplace=True)
+            data.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "per_change": "Change", "traded_quantity": "Volume"}, inplace=True)
             data = data.sort_index()
             predictors = ["Open", "High", "Low", "Close", "Volume"]
+            # Main stock price graph
+            fig_main = go.Figure()
+            fig_main.add_trace(go.Scatter(x=data.index, y=data["Open"], mode='lines', name='Open Price'))
+            fig_main.add_trace(go.Scatter(x=data.index, y=data["Close"], mode='lines', name='Close Price'))
+            fig_main.update_layout(title="Stock Prices Over Time", xaxis_title="Date", yaxis_title="Price", legend_title="Legend")
+            st.plotly_chart(fig_main)
+
+            # Create a copy of the data to avoid modifying the original DataFrame
+            data_display = data.copy()
+
+            # Check and remove duplicate columns
+            if data_display.columns.duplicated().sum() > 0:
+                data_display = data_display.loc[:, ~data_display.columns.duplicated()]
+
+            # Check and remove duplicate index values
+            if data_display.index.duplicated().sum() > 0:
+                data_display = data_display[~data_display.index.duplicated(keep='first')]
+
+            # Reorder data to show the latest data at the top
+            data_display = data_display[::-1]  # Reverse the DataFrame to show latest first
+
+            # Select only the desired columns for display
+            selected_columns = ["Open", "High", "Low", "Close", "Volume", "Change"]
+            data_display = data_display[selected_columns]
+
+            # Display the table with the latest data at the top
+            st.write("### Stock Prices Table")
+            st.dataframe(data_display, use_container_width=True)
+
+
+
             # Moving Average Calculation
             data['50_MA'] = data['Close'].rolling(window=50).mean()
             data['200_MA'] = data['Close'].rolling(window=200).mean()
 
-            # Main stock price graph
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=data.index, y=data["Open"], mode='lines', name='Open Price'))
-            fig.add_trace(go.Scatter(x=data.index, y=data["Close"], mode='lines', name='Close Price'))
-            fig.add_trace(go.Scatter(x=data.index, y=data["50_MA"], mode='lines', name='50-Day MA', line=dict(dash='dot')))
-            fig.add_trace(go.Scatter(x=data.index, y=data["200_MA"], mode='lines', name='200-Day MA', line=dict(dash='dot')))
-            fig.update_layout(title="Stock Prices Over Time", xaxis_title="Date", yaxis_title="Price", legend_title="Legend")
-            st.plotly_chart(fig)
+            # 50-Day Moving Average graph
+            fig_50_ma = go.Figure()
+            fig_50_ma.add_trace(go.Scatter(x=data.index, y=data["50_MA"], mode='lines', name='50-Day MA', line=dict(dash='dot', color='blue')))
+            fig_50_ma.update_layout(title="50-Day Moving Average", xaxis_title="Date", yaxis_title="Price", legend_title="Legend")
+            st.plotly_chart(fig_50_ma)
+
+            # 200-Day Moving Average graph
+            fig_200_ma = go.Figure()
+            fig_200_ma.add_trace(go.Scatter(x=data.index, y=data["200_MA"], mode='lines', name='200-Day MA', line=dict(dash='dot', color='green')))
+            fig_200_ma.update_layout(title="200-Day Moving Average", xaxis_title="Date", yaxis_title="Price", legend_title="Legend")
+            st.plotly_chart(fig_200_ma)
             
             # Highest and Lowest Prices
             highest_price = data['High'].max()
@@ -114,8 +148,8 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 comparison = test[["Open", "Close" ]].copy()
                 comparison["Predicted_Open"] = predictions_df["Open"]
                 comparison["Predicted_Close"] = predictions_df["Close"]
-                st.write("### Predicted vs Actual Prices for the Last 3 Days")
-                st.dataframe(comparison)
+                st.write("### Predicted vs Actual Prices")
+                st.dataframe(comparison,use_container_width=True)
             
                 accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
                 accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
