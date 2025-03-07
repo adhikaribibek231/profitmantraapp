@@ -1,4 +1,5 @@
 import os
+import random
 import pandas as pd
 import streamlit as st
 from utils import check_login_status
@@ -88,8 +89,9 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
             st.write(f"**Lowest Price:** {lowest_price:.2f}")
             st.write(f"**Biggest Trend Change:** {biggest_trend_change:.2f}")
             
-            train = data.iloc[:-3]
-            test = data.iloc[-3:]
+            train_size = int(0.8 * len(data))  # 80% for training
+            train = data.iloc[:train_size]
+            test = data.iloc[train_size:]
             
             models = {}
             predictions = {}
@@ -123,18 +125,28 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
                 st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
                 st.write(f"- Overall Model Accuracy: {overall_accuracy:.2f}%")
+                st.write("### Price Trend Predictions Accuracy Measurement")
 
-                st.write("### Price Trend Predictions Accuracy measurement")
                 previous_close = data.iloc[-4]["Close"] if len(data) > 3 else None
-                for date, row in predictions_df.iterrows():
+
+                # Get a list of available dates
+                dates = list(predictions_df.index)
+
+                # Randomly select 5 dates if there are at least 5, otherwise use all available
+                sampled_dates = random.sample(dates, min(20, len(dates)))
+
+                for date in sampled_dates:
+                    row = predictions_df.loc[date]
                     predicted_close = row["Close"]
                     actual_close = test.loc[date, "Close"]
+                    
                     if previous_close is not None:
                         trend = "Increase" if predicted_close > previous_close else "Decrease"
                         correct_prediction = (trend == "Increase" and actual_close > previous_close) or (trend == "Decrease" and actual_close < previous_close)
                         correctness = "✅ Correct" if correct_prediction else "❌ Incorrect"
                         st.write(f"**{date.date()}**: Predicted Close: {predicted_close:.2f}, Trend: {trend}, Actual Close: {actual_close:.2f}, Prediction: {correctness}")
-                    previous_close = actual_close
+                    
+                    previous_close = actual_close  # Update for the next iteration
                         
                 # Predict next number of days
                             # Select number of days for prediction
