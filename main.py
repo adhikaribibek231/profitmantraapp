@@ -149,6 +149,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 comparison["Predicted_Open"] = predictions_df["Open"]
                 comparison["Predicted_Close"] = predictions_df["Close"]
                 st.write("### Predicted vs Actual Prices")
+                comparison = comparison[::-1]
                 st.dataframe(comparison,use_container_width=True)
             
                 accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
