@@ -1,9 +1,11 @@
 import os
 import random
 import pandas as pd
+import numpy as np
 import streamlit as st
 from utils import check_login_status
 import plotly.graph_objects as go
+import plotly.express as px
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -135,21 +137,42 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 predictions[target] = model.predict(test[predictors])
             
             predictions_df = pd.DataFrame(predictions, index=test.index)
+            # Volume Spike Detection
+            st.subheader("Volume Spike Detection")
+            volume_threshold = data['Volume'].quantile(0.95)
+            spikes = data[data['Volume'] > volume_threshold]
+            st.write(f"Detected {len(spikes)} volume spikes.")
+            st.dataframe(spikes[['Volume']], use_container_width=True)
             st.title("Advanced Features")
             if check_login_status():
-                # Volume Spike Detection
-                st.subheader("Volume Spike Detection")
-                volume_threshold = data['Volume'].quantile(0.95)
-                spikes = data[data['Volume'] > volume_threshold]
-                st.write(f"Detected {len(spikes)} volume spikes.")
-                st.dataframe(spikes[['Volume']])
 
-                comparison = test[["Open", "Close" ]].copy()
+                # Create a copy of the actual and predicted prices
+                comparison = test[["Open", "Close"]].copy()
                 comparison["Predicted_Open"] = predictions_df["Open"]
                 comparison["Predicted_Close"] = predictions_df["Close"]
+                comparison = comparison[::-1]  # Reverse for correct ordering
+
+                # Display the dataframe
                 st.write("### Predicted vs Actual Prices")
-                comparison = comparison[::-1]
-                st.dataframe(comparison,use_container_width=True)
+                st.dataframe(comparison, use_container_width=True)
+
+                # Plotly graph for Open prices
+                fig_open = go.Figure()
+                fig_open.add_trace(go.Scatter(y=comparison["Open"], mode='lines', name='Actual Open', line=dict(color='blue')))
+                fig_open.add_trace(go.Scatter(y=comparison["Predicted_Open"], mode='lines', name='Predicted Open', line=dict(color='red', dash='dot')))
+                fig_open.update_layout(title="Actual vs Predicted Open Prices", xaxis_title="Time", yaxis_title="Price", template="plotly_dark")
+
+                # Show the Open prices plot
+                st.plotly_chart(fig_open, use_container_width=True)
+
+                # Plotly graph for Close prices
+                fig_close = go.Figure()
+                fig_close.add_trace(go.Scatter(y=comparison["Close"], mode='lines', name='Actual Close', line=dict(color='blue')))
+                fig_close.add_trace(go.Scatter(y=comparison["Predicted_Close"], mode='lines', name='Predicted Close', line=dict(color='red', dash='dot')))
+                fig_close.update_layout(title="Actual vs Predicted Close Prices", xaxis_title="Time", yaxis_title="Price", template="plotly_dark")
+
+                # Show the Close prices plot
+                st.plotly_chart(fig_close, use_container_width=True)
             
                 accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
                 accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
@@ -220,25 +243,93 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 st.dataframe(results_df)
                         
                 # Predict next number of days
-                            # Select number of days for prediction
-                num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
-                
-                # Predict next number of days
+                # Select number of days for prediction
+                num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)                
+
+                # Generate future dates
                 future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-                future_predictions = {}
-                for target in ["Open", "Close"]:
-                    future_predictions[target] = models[target].predict(data[predictors].iloc[-3:].mean().values.reshape(1, -1))
-                
-                st.write("### Price Trend Predictions for Next selected number of Days") 
-                previous_close = data.iloc[-1]["Close"]
-                previous_open = data.iloc[-1]["Open"]
-                for i, date in enumerate(future_dates):
-                    predicted_open = future_predictions["Open"][0] + (i * 0.005 * previous_open)  # Slight variation simulation
-                    predicted_close = future_predictions["Close"][0] + (i * 0.01 * previous_close)  # Slight variation simulation
-                    trend = "Increase" if predicted_close > previous_close else "Decrease"
-                    st.write(f"**{date.date()}**: Predicted Open: {predicted_open:.2f}, Predicted Close: {predicted_close:.2f}, Trend: {trend}")
-                    previous_open = predicted_open
-                    previous_close = predicted_close
+
+                # Initialize storage for future predictions
+                future_predictions = {"Date": [], "Open": [], "Close": [], "Trend": []}
+
+                # Use a rolling window of past 5 days for predictions
+                window_size = 5
+                recent_data = data[predictors].iloc[-window_size:].copy()
+
+                # Predict for each future day iteratively
+                for i in range(num_days):
+                    next_day_features = recent_data.mean().values.reshape(1, -1)  # Use rolling mean as features
+
+                    predicted_open = models["Open"].predict(next_day_features)[0]
+                    predicted_close = models["Close"].predict(next_day_features)[0]
+
+                    # Introduce random noise for slight market fluctuations
+                    noise_open = np.random.uniform(-0.005, 0.005) * predicted_open
+                    noise_close = np.random.uniform(-0.01, 0.01) * predicted_close
+
+                    predicted_open += noise_open
+                    predicted_close += noise_close
+
+                    # Determine trend
+                    trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
+
+                    # Store predictions
+                    future_predictions["Date"].append(future_dates[i].date())
+                    future_predictions["Open"].append(predicted_open)
+                    future_predictions["Close"].append(predicted_close)
+                    future_predictions["Trend"].append(trend)
+
+                    # Update recent data with predicted values for the next iteration
+                    new_row = recent_data.iloc[-1].copy()
+                    new_row[predictors] = next_day_features.flatten()  # Set new features based on rolling mean
+                    recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])  # Shift window
+
+                # Convert to DataFrame
+                predictions_df = pd.DataFrame(future_predictions)
+
+                # Apply colors to trends
+                def color_trend(val):
+                    color = "green" if val == "Increase" else "red"
+                    return f"color: {color}"
+
+                # Display the table with colored trends
+                st.write("### 📈 Price Trend Predictions for Next Selected Number of Days")
+                styled_table = predictions_df.style.applymap(color_trend, subset=["Trend"]).format(
+                    {"Open": "{:.2f}", "Close": "{:.2f}"}
+                )
+                st.dataframe(styled_table, use_container_width=True)
+                # Plot the predictions using Plotly
+                fig = go.Figure()
+
+                # Add Open Price Line
+                fig.add_trace(go.Scatter(
+                    x=predictions_df["Date"], 
+                    y=predictions_df["Open"], 
+                    mode="lines+markers",
+                    name="Predicted Open Price",
+                    line=dict(color="blue")
+                ))
+
+                # Add Close Price Line
+                fig.add_trace(go.Scatter(
+                    x=predictions_df["Date"], 
+                    y=predictions_df["Close"], 
+                    mode="lines+markers",
+                    name="Predicted Close Price",
+                    line=dict(color="red")
+                ))
+
+                # Customize layout
+                fig.update_layout(
+                    title="Predicted Open & Close Prices",
+                    xaxis_title="Future Date",
+                    yaxis_title="Price",
+                    legend_title="Price Type",
+                    template="plotly_white"  # Simple white theme
+                )
+
+                # Show the Plotly chart in Streamlit
+                st.plotly_chart(fig)
             if not check_login_status():
                 st.info("Please log in to see more content.")
 
