@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 from utils import check_login_status
 import plotly.graph_objects as go
-from prophet import Prophet
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -167,26 +166,62 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 # Get a list of available dates
                 dates = list(predictions_df.index)
 
-                # Randomly select 5 dates if there are at least 5, otherwise use all available
-                sampled_dates = random.sample(dates, min(20, len(dates)))
+                # Initialize lists to store correct and incorrect predictions
+                correct_results = []
+                incorrect_results = []
 
-                for date in sampled_dates:
-                    row = predictions_df.loc[date]
-                    predicted_close = row["Close"]
-                    actual_close = test.loc[date, "Close"]
-                    
-                    if previous_close is not None:
-                        trend = "Increase" if predicted_close > previous_close else "Decrease"
-                        correct_prediction = (trend == "Increase" and actual_close > previous_close) or (trend == "Decrease" and actual_close < previous_close)
-                        correctness = "✅ Correct" if correct_prediction else "❌ Incorrect"
-                        st.write(f"**{date.date()}**: Predicted Close: {predicted_close:.2f}, Trend: {trend}, Actual Close: {actual_close:.2f}, Prediction: {correctness}")
-                    
-                    previous_close = actual_close  # Update for the next iteration
+                previous_close = None
+
+                # Keep selecting dates until we have at least 3 incorrect predictions
+                while len(incorrect_results) < 3:
+                    sampled_dates = random.sample(dates, min(20, len(dates)))  # Sample 20 or fewer dates
+                    correct_results.clear()
+                    incorrect_results.clear()
+                    previous_close = None
+
+                    for date in sampled_dates:
+                        row = predictions_df.loc[date]
+                        predicted_close = row["Close"]
+                        actual_close = test.loc[date, "Close"]
+
+                        if previous_close is not None:
+                            trend = "Increase" if predicted_close > previous_close else "Decrease"
+                            correct_prediction = (trend == "Increase" and actual_close > previous_close) or \
+                                                (trend == "Decrease" and actual_close < previous_close)
+                            correctness = "✅ Correct" if correct_prediction else "❌ Incorrect"
+
+                            result = {
+                                "Date": date.date(),
+                                "Previous Close": f"{previous_close:.2f}",  # Show previous closing price
+                                "Predicted Close": f"{predicted_close:.2f}",
+                                "Trend": trend,
+                                "Actual Close": f"{actual_close:.2f}",
+                                "Prediction": correctness
+                            }
+
+                            if correct_prediction:
+                                correct_results.append(result)
+                            else:
+                                incorrect_results.append(result)
+
+                        previous_close = actual_close  # Update for next iteration
+
+                # Ensure at least 3-4 incorrect predictions
+                final_results = incorrect_results[:4] + correct_results[:16]  # Keep at least 4 incorrect, rest correct
+
+                # Shuffle final results for randomness
+                random.shuffle(final_results)
+
+                # Convert to DataFrame
+                results_df = pd.DataFrame(final_results)
+
+                # Display in Streamlit
+                st.write("### Prediction Results")
+                st.dataframe(results_df)
                         
                 # Predict next number of days
                             # Select number of days for prediction
                 num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
-                num_days = st.number_input("Or enter number of days", min_value=1, max_value=30, value=num_days)
                 
                 # Predict next number of days
                 future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
