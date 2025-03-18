@@ -260,62 +260,74 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 # Select number of days for prediction
                 # num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
                 num_days = 30
-                # Generate future dates
-                future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-                
-                # Initialize storage for future predictions
-                future_predictions = {"Date": [], "Open": [], "High": [], "Low": [], "Close": [], "Trend": []}
-                
-                # Use a rolling window of past 5 days for predictions
-                window_size = 5
-                recent_data = data[predictors].iloc[-window_size:].copy()
-                
-                # Predict for each future day iteratively
-                for i in range(num_days):
-                    next_day_features = recent_data.mean().values.reshape(1, -1)  # Use rolling mean as features
-                    
-                    predicted_open = models["Open"].predict(next_day_features)[0]
-                    predicted_high = models["High"].predict(next_day_features)[0]
-                    predicted_low = models["Low"].predict(next_day_features)[0]
-                    predicted_close = models["Close"].predict(next_day_features)[0]
-                    
-                    # Introduce random noise for slight market fluctuations
-                    noise_open = np.random.uniform(-0.005, 0.005) * predicted_open
-                    noise_high = np.random.uniform(-0.005, 0.005) * predicted_high
-                    noise_low = np.random.uniform(-0.005, 0.005) * predicted_low
-                    noise_close = np.random.uniform(-0.01, 0.01) * predicted_close
-                    
-                    predicted_open += noise_open
-                    predicted_high += noise_high
-                    predicted_low += noise_low
-                    predicted_close += noise_close
-                    
-                    # Determine trend
-                    trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
-                    
-                    # Store predictions
-                    future_predictions["Date"].append(future_dates[i].date())
-                    future_predictions["Open"].append(predicted_open)
-                    future_predictions["High"].append(predicted_high)
-                    future_predictions["Low"].append(predicted_low)
-                    future_predictions["Close"].append(predicted_close)
-                    future_predictions["Trend"].append(trend)
-                    
-                    # Update recent data with predicted values for the next iteration
-                    new_row = recent_data.iloc[-1].copy()
-                    new_row[predictors] = next_day_features.flatten()  # Set new features based on rolling mean
-                    recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])  # Shift window
-                
-                # Convert to DataFrame
-                predictions_df = pd.DataFrame(future_predictions)
+                prediction_folder = "predictions"
+                os.makedirs(prediction_folder, exist_ok=True)
 
-                # Apply colors to trends
+                prediction_file = f"{prediction_folder}/{stock_symbol}_prediction.csv"
+
+                def generate_predictions():
+                    future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
+
+                    future_predictions = {"Date": [], "Open": [], "High": [], "Low": [], "Close": [], "Trend": []}
+                    window_size = 5
+                    recent_data = data[predictors].iloc[-window_size:].copy()
+
+                    for i in range(num_days):
+                        next_day_features = recent_data.mean().values.reshape(1, -1)
+
+                        predicted_open = models["Open"].predict(next_day_features)[0]
+                        predicted_high = models["High"].predict(next_day_features)[0]
+                        predicted_low = models["Low"].predict(next_day_features)[0]
+                        predicted_close = models["Close"].predict(next_day_features)[0]
+
+                        # Add some noise
+                        predicted_open += np.random.uniform(-0.005, 0.005) * predicted_open
+                        predicted_high += np.random.uniform(-0.005, 0.005) * predicted_high
+                        predicted_low += np.random.uniform(-0.005, 0.005) * predicted_low
+                        predicted_close += np.random.uniform(-0.01, 0.01) * predicted_close
+
+                        trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
+
+                        future_predictions["Date"].append(future_dates[i].date())
+                        future_predictions["Open"].append(predicted_open)
+                        future_predictions["High"].append(predicted_high)
+                        future_predictions["Low"].append(predicted_low)
+                        future_predictions["Close"].append(predicted_close)
+                        future_predictions["Trend"].append(trend)
+
+                        # Update recent_data for next iteration
+                        new_row = recent_data.iloc[-1].copy()
+                        new_row[predictors] = next_day_features.flatten()
+                        recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])
+
+                    return pd.DataFrame(future_predictions)
+
+                # --- Intelligent prediction check based on latest data available ---
+                need_to_predict = True
+                latest_data_date = data.index[-1].date()
+
+                if os.path.exists(prediction_file):
+                    existing_predictions = pd.read_csv(prediction_file, parse_dates=["Date"])
+                    first_predicted_date = existing_predictions["Date"].min().date()
+
+                    # Check if predictions were generated with the latest data
+                    if first_predicted_date > latest_data_date:
+                        need_to_predict = False
+                        predictions_df = existing_predictions
+                        st.success(f"✅ Loaded cached predictions for {stock_symbol} (Predicted with latest data till {latest_data_date})")
+                    else:
+                        st.info(f"🔄 Cached predictions outdated. Latest data is till {latest_data_date}, but prediction starts from {first_predicted_date}")
+
+                if need_to_predict:
+                    predictions_df = generate_predictions()
+                    predictions_df.to_csv(prediction_file, index=False)
+                    st.info(f"🆕 Generated new predictions for {stock_symbol}")
+
+                # Styling
                 def color_trend(val):
-                    color = "green" if val == "Increase" else "red"
-                    return f"color: {color}"
+                    return "color: green" if val == "Increase" else "color: red"
 
-                # Display the table with colored trends
-                st.write("### 📈 Price Trend Predictions for the next 30 Days")
+                st.write(f"### 📈 Price Trend Predictions for {stock_symbol.upper()} - Next {num_days} Days")
                 styled_table = predictions_df.style.applymap(color_trend, subset=["Trend"]).format(
                     {"Open": "{:.2f}", "High": "{:.2f}", "Low": "{:.2f}", "Close": "{:.2f}"}
                 )
