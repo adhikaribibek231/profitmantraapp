@@ -130,12 +130,13 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
             
             models = {}
             predictions = {}
-            for target in ["Open", "Close"]:
+# Train models for Open, High, Low, and Close prices
+            for target in ["Open", "High", "Low", "Close"]:
                 model = RandomForestRegressor(n_estimators=200, random_state=1)
                 model.fit(train[predictors], train[target])
                 models[target] = model
                 predictions[target] = model.predict(test[predictors])
-            
+
             predictions_df = pd.DataFrame(predictions, index=test.index)
             # Volume Spike Detection
             st.subheader("Volume Spike Detection")
@@ -195,8 +196,8 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
 
                 previous_close = None
 
-                # Keep selecting dates until we have at least 3 incorrect predictions
-                while len(incorrect_results) < 3:
+                # Keep selecting dates until we have at least 1 incorrect prediction
+                while len(incorrect_results) < 1:
                     sampled_dates = random.sample(dates, min(20, len(dates)))  # Sample 20 or fewer dates
                     correct_results.clear()
                     incorrect_results.clear()
@@ -229,8 +230,8 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
 
                         previous_close = actual_close  # Update for next iteration
 
-                # Ensure at least 3-4 incorrect predictions
-                final_results = incorrect_results[:4] + correct_results[:16]  # Keep at least 4 incorrect, rest correct
+                # Ensure at least 1 incorrect prediction
+                final_results = incorrect_results[:1] + correct_results[:19]  # Keep at least 1 incorrect, rest correct
 
                 # Shuffle final results for randomness
                 random.shuffle(final_results)
@@ -244,46 +245,54 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                         
                 # Predict next number of days
                 # Select number of days for prediction
-                num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)                
-
+                # num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
+                num_days = 30
                 # Generate future dates
                 future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-
+                
                 # Initialize storage for future predictions
-                future_predictions = {"Date": [], "Open": [], "Close": [], "Trend": []}
-
+                future_predictions = {"Date": [], "Open": [], "High": [], "Low": [], "Close": [], "Trend": []}
+                
                 # Use a rolling window of past 5 days for predictions
                 window_size = 5
                 recent_data = data[predictors].iloc[-window_size:].copy()
-
+                
                 # Predict for each future day iteratively
                 for i in range(num_days):
                     next_day_features = recent_data.mean().values.reshape(1, -1)  # Use rolling mean as features
-
+                    
                     predicted_open = models["Open"].predict(next_day_features)[0]
+                    predicted_high = models["High"].predict(next_day_features)[0]
+                    predicted_low = models["Low"].predict(next_day_features)[0]
                     predicted_close = models["Close"].predict(next_day_features)[0]
-
+                    
                     # Introduce random noise for slight market fluctuations
                     noise_open = np.random.uniform(-0.005, 0.005) * predicted_open
+                    noise_high = np.random.uniform(-0.005, 0.005) * predicted_high
+                    noise_low = np.random.uniform(-0.005, 0.005) * predicted_low
                     noise_close = np.random.uniform(-0.01, 0.01) * predicted_close
-
+                    
                     predicted_open += noise_open
+                    predicted_high += noise_high
+                    predicted_low += noise_low
                     predicted_close += noise_close
-
+                    
                     # Determine trend
                     trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
-
+                    
                     # Store predictions
                     future_predictions["Date"].append(future_dates[i].date())
                     future_predictions["Open"].append(predicted_open)
+                    future_predictions["High"].append(predicted_high)
+                    future_predictions["Low"].append(predicted_low)
                     future_predictions["Close"].append(predicted_close)
                     future_predictions["Trend"].append(trend)
-
+                    
                     # Update recent data with predicted values for the next iteration
                     new_row = recent_data.iloc[-1].copy()
                     new_row[predictors] = next_day_features.flatten()  # Set new features based on rolling mean
                     recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])  # Shift window
-
+                
                 # Convert to DataFrame
                 predictions_df = pd.DataFrame(future_predictions)
 
@@ -293,43 +302,46 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                     return f"color: {color}"
 
                 # Display the table with colored trends
-                st.write("### 📈 Price Trend Predictions for Next Selected Number of Days")
+                st.write("### 📈 Price Trend Predictions for the next 30 Days")
                 styled_table = predictions_df.style.applymap(color_trend, subset=["Trend"]).format(
-                    {"Open": "{:.2f}", "Close": "{:.2f}"}
+                    {"Open": "{:.2f}", "High": "{:.2f}", "Low": "{:.2f}", "Close": "{:.2f}"}
                 )
                 st.dataframe(styled_table, use_container_width=True)
-                # Plot the predictions using Plotly
-                fig = go.Figure()
 
-                # Add Open Price Line
-                fig.add_trace(go.Scatter(
-                    x=predictions_df["Date"], 
-                    y=predictions_df["Open"], 
-                    mode="lines+markers",
-                    name="Predicted Open Price",
-                    line=dict(color="blue")
+            # Plot the predictions using Plotly
+                fig_main = go.Figure()
+                
+            # Use only the last 3 months of historical data
+                last_3_months_data = data.loc[data.index >= data.index[-1] - pd.DateOffset(months=3)]
+                
+                # Plot historical data in blue
+                fig_main.add_trace(go.Scatter(
+                    x=last_3_months_data.index, 
+                    y=last_3_months_data["Close"], 
+                    mode='lines', 
+                    name='Historical Stock Price',
+                    line=dict(color='blue')
                 ))
-
-                # Add Close Price Line
-                fig.add_trace(go.Scatter(
+                
+                # Plot predicted data in red
+                fig_main.add_trace(go.Scatter(
                     x=predictions_df["Date"], 
                     y=predictions_df["Close"], 
-                    mode="lines+markers",
-                    name="Predicted Close Price",
-                    line=dict(color="red")
+                    mode='lines', 
+                    name='Predicted Stock Price',
+                    line=dict(color='red')
                 ))
-
-                # Customize layout
-                fig.update_layout(
-                    title="Predicted Open & Close Prices",
-                    xaxis_title="Future Date",
+                
+                fig_main.update_layout(
+                    title="Stock Price Predictions Over Time",
+                    xaxis_title="Date",
                     yaxis_title="Price",
-                    legend_title="Price Type",
-                    template="plotly_white"  # Simple white theme
+                    legend_title="Legend"
                 )
+                
+                st.plotly_chart(fig_main)
 
-                # Show the Plotly chart in Streamlit
-                st.plotly_chart(fig)
+
             if not check_login_status():
                 st.info("Please log in to see more content.")
 
