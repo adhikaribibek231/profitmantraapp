@@ -260,14 +260,19 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 # Select number of days for prediction
                 # num_days = st.slider("Select number of days", min_value=1, max_value=30, value=5)
                 num_days = 30
-                prediction_folder = "predictions"
-                os.makedirs(prediction_folder, exist_ok=True)
+                prediction_file = f"predictions/{stock_symbol}_prediction.csv"
 
-                prediction_file = f"{prediction_folder}/{stock_symbol}_prediction.csv"
+                # Calculate recent volatility from real data (using the last 10 days)
+                recent_closes = data['Close'].iloc[-10:]
+                daily_pct_change = recent_closes.pct_change().dropna()
+                avg_volatility = daily_pct_change.abs().mean()
+
+                # Safety net: enforce a minimum baseline volatility
+                if avg_volatility < 0.005:
+                    avg_volatility = 0.005
 
                 def generate_predictions():
                     future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-
                     future_predictions = {"Date": [], "Open": [], "High": [], "Low": [], "Close": [], "Trend": []}
                     window_size = 5
                     recent_data = data[predictors].iloc[-window_size:].copy()
@@ -280,11 +285,12 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                         predicted_low = models["Low"].predict(next_day_features)[0]
                         predicted_close = models["Close"].predict(next_day_features)[0]
 
-                        # Add some noise
-                        predicted_open += np.random.uniform(-0.005, 0.005) * predicted_open
-                        predicted_high += np.random.uniform(-0.005, 0.005) * predicted_high
-                        predicted_low += np.random.uniform(-0.005, 0.005) * predicted_low
-                        predicted_close += np.random.uniform(-0.01, 0.01) * predicted_close
+                        # Inject realistic market fluctuation based on recent volatility
+                        fluctuation_factor = np.random.normal(0, avg_volatility)
+                        predicted_open *= (1 + fluctuation_factor)
+                        predicted_high *= (1 + fluctuation_factor)
+                        predicted_low *= (1 + fluctuation_factor)
+                        predicted_close *= (1 + fluctuation_factor)
 
                         trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
 
@@ -295,44 +301,55 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                         future_predictions["Close"].append(predicted_close)
                         future_predictions["Trend"].append(trend)
 
-                        # Update recent_data for next iteration
+                        # Update recent_data for next iteration by shifting the window
                         new_row = recent_data.iloc[-1].copy()
                         new_row[predictors] = next_day_features.flatten()
                         recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])
 
                     return pd.DataFrame(future_predictions)
 
-                # --- Intelligent prediction check based on latest data available ---
-                need_to_predict = True
-                latest_data_date = data.index[-1].date()
 
+                # Check if the prediction file exists and if it is up-to-date
                 if os.path.exists(prediction_file):
-                    existing_predictions = pd.read_csv(prediction_file, parse_dates=["Date"])
-                    first_predicted_date = existing_predictions["Date"].min().date()
+                    predictions_df = pd.read_csv(prediction_file, parse_dates=["Date"])
 
-                    # Check if predictions were generated with the latest data
-                    if first_predicted_date > latest_data_date:
-                        need_to_predict = False
-                        predictions_df = existing_predictions
-                        st.success(f"✅ Loaded cached predictions for {stock_symbol} (Predicted with latest data till {latest_data_date})")
-                    else:
-                        st.info(f"🔄 Cached predictions outdated. Latest data is till {latest_data_date}, but prediction starts from {first_predicted_date}")
+                    # Ensure that Date is a column (reset index if needed)
+                    if predictions_df.index.name == 'Date':
+                        predictions_df.reset_index(inplace=True)
 
-                if need_to_predict:
+                    # Get last available real data date and the first prediction date
+                    last_real_date = data.index[-1].date()
+                    prediction_start_date = predictions_df["Date"].iloc[0]
+
+                    # Convert the prediction start to date before comparing
+                    if prediction_start_date.date() <= last_real_date:
+                        predictions_df = generate_predictions()
+                        predictions_df.to_csv(prediction_file, index=False)
+                else:
+                    # No prediction file exists; generate new predictions and save them
                     predictions_df = generate_predictions()
+                    os.makedirs("predictions", exist_ok=True)
                     predictions_df.to_csv(prediction_file, index=False)
-                    st.info(f"🆕 Generated new predictions for {stock_symbol}")
 
-                # Styling
+                # Plot the predictions using Plotly
+                st.write(f"### 📈 {stock_symbol} Price Trend Predictions for the Next {num_days} Days")
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=predictions_df["Date"],
+                    y=predictions_df["Close"],
+                    mode='lines+markers',
+                    name='Predicted Close'
+                ))
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Optional: Display a table with colored trend values
                 def color_trend(val):
                     return "color: green" if val == "Increase" else "color: red"
 
-                st.write(f"### 📈 Price Trend Predictions for {stock_symbol.upper()} - Next {num_days} Days")
                 styled_table = predictions_df.style.applymap(color_trend, subset=["Trend"]).format(
                     {"Open": "{:.2f}", "High": "{:.2f}", "Low": "{:.2f}", "Close": "{:.2f}"}
                 )
                 st.dataframe(styled_table, use_container_width=True)
-
             # Plot the predictions using Plotly
                 fig_main = go.Figure()
                 
