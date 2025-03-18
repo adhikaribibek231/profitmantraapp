@@ -72,7 +72,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
             fig_main.update_layout(title="Stock Prices Over Time", xaxis_title="Date", yaxis_title="Price", legend_title="Legend")
             st.plotly_chart(fig_main)
 
-            # Create a copy of the data to avoid modifying the original DataFrame
+            # Create a copy to avoid modifying the original DataFrame
             data_display = data.copy()
 
             # Check and remove duplicate columns
@@ -84,15 +84,28 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 data_display = data_display[~data_display.index.duplicated(keep='first')]
 
             # Reorder data to show the latest data at the top
-            data_display = data_display[::-1]  # Reverse the DataFrame to show latest first
+            data_display = data_display[::-1]  # Reverse DataFrame
 
             # Select only the desired columns for display
             selected_columns = ["Open", "High", "Low", "Close", "Volume", "Change"]
             data_display = data_display[selected_columns]
 
-            # Display the table with the latest data at the top
+            # Function to apply color formatting
+            def highlight_change(val):
+                if val > 0:
+                    color = "green"
+                elif val < 0:
+                    color = "red"
+                else:
+                    color = "blue"
+                return f"color: {color}; font-weight: bold"
+
+            # Apply styling
+            styled_df = data_display.style.applymap(highlight_change, subset=["Change"]).format("{:.2f}")
+
+            # Display the table
             st.write("### Stock Prices Table")
-            st.dataframe(data_display, use_container_width=True)
+            st.dataframe(styled_df, use_container_width=True)
 
 
 
