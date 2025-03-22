@@ -254,7 +254,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
 
                 # Display in Streamlit
                 st.write("### Prediction Results")
-                st.dataframe(results_df)
+                st.dataframe(results_df, use_container_width=True)
                         
                 # Predict next number of days
                 # Select number of days for prediction
@@ -273,9 +273,20 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
 
                 def generate_predictions():
                     future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=num_days)
-                    future_predictions = {"Date": [], "Open": [], "High": [], "Low": [], "Close": [], "Trend": []}
+                    future_predictions = {
+                        "Date": [],
+                        "Open": [],
+                        "High": [],
+                        "Low": [],
+                        "Close": [],
+                        "Trend": [],
+                        "Percentage Change": []
+                    }
                     window_size = 5
                     recent_data = data[predictors].iloc[-window_size:].copy()
+
+                    # Initialize previous_close with the last actual close from the dataset
+                    previous_close = data.iloc[-1]["Close"]
 
                     for i in range(num_days):
                         next_day_features = recent_data.mean().values.reshape(1, -1)
@@ -292,14 +303,21 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                         predicted_low *= (1 + fluctuation_factor)
                         predicted_close *= (1 + fluctuation_factor)
 
-                        trend = "Increase" if predicted_close > data.iloc[-1]["Close"] else "Decrease"
+                        # Calculate trend and percentage change
+                        trend = "Increase" if predicted_close > previous_close else "Decrease"
+                        percentage_change = ((predicted_close - previous_close) / previous_close) * 100
 
+                        # Append values
                         future_predictions["Date"].append(future_dates[i].date())
                         future_predictions["Open"].append(predicted_open)
                         future_predictions["High"].append(predicted_high)
                         future_predictions["Low"].append(predicted_low)
                         future_predictions["Close"].append(predicted_close)
                         future_predictions["Trend"].append(trend)
+                        future_predictions["Percentage Change"].append(round(percentage_change, 2))  # Rounded to 2 decimal places
+
+                        # Update previous_close for the next iteration
+                        previous_close = predicted_close
 
                         # Update recent_data for next iteration by shifting the window
                         new_row = recent_data.iloc[-1].copy()
@@ -307,6 +325,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                         recent_data = pd.concat([recent_data.iloc[1:], pd.DataFrame([new_row])])
 
                     return pd.DataFrame(future_predictions)
+
 
 
                 # Check if the prediction file exists and if it is up-to-date
