@@ -40,7 +40,7 @@ def login_user(username, password):
     return user is not None  # Return True if user exists
 
 def check_login_status():
-    return "logged_in_user" in st.session_state
+    return st.session_state.get("logged_in_user") is not None
 
 def set_login_status(username):
     st.session_state["logged_in_user"] = username
