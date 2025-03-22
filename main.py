@@ -11,8 +11,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_percentage_error
 from scraper import scrape_stock_data  # Import the scraping function
-
 from navbar import navbar
+
 
 st.set_page_config(page_title="Home", page_icon="🏠", layout="centered")
 
@@ -192,11 +192,22 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
                 overall_accuracy = 100 - (mean_absolute_percentage_error(test[["Open", "Close"]], predictions_df[["Open", "Close"]]) * 100)
 
+                # Calculate actual and predicted trend (Up/Down)
+                comparison["Actual_Trend"] = (comparison["Close"] > comparison["Open"]).astype(int)  # 1 for up, 0 for down
+                comparison["Predicted_Trend"] = (comparison["Predicted_Close"] > comparison["Predicted_Open"]).astype(int)
+
+                # Calculate trend prediction accuracy
+                correct_trend_predictions = (comparison["Actual_Trend"] == comparison["Predicted_Trend"]).sum()
+                total_predictions = len(comparison)
+                trend_accuracy = (correct_trend_predictions / total_predictions) * 100
+
+                # Display results
                 st.write("### Model Accuracy Measurement")
                 st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
                 st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
-                st.write(f"- Overall Model Accuracy: {overall_accuracy:.2f}%")
-                st.write("### Price Trend Predictions Accuracy Measurement")
+                st.write(f"- Overall Model Accuracy (MAPE Based): {overall_accuracy:.2f}%")
+                st.write(f"### Price Trend Predictions Accuracy Measurement")
+                st.write(f"- Trend Prediction Accuracy: {trend_accuracy:.2f}%")
 
                 previous_close = data.iloc[-4]["Close"] if len(data) > 3 else None
 
