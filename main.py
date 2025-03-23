@@ -186,7 +186,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 fig_close.update_layout(title="Actual vs Predicted Close Prices", xaxis_title="Time", yaxis_title="Price", template="plotly_dark")
 
                 # Show the Close prices plot
-                st.plotly_chart(fig_close, use_container_width=True)
+                # st.plotly_chart(fig_close, use_container_width=True)
             
                 accuracy_open = 100 - mean_absolute_percentage_error(test["Open"], predictions_df["Open"]) * 100
                 accuracy_close = 100 - mean_absolute_percentage_error(test["Close"], predictions_df["Close"]) * 100
@@ -202,10 +202,10 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                 trend_accuracy = (correct_trend_predictions / total_predictions) * 100
 
                 # Display results
-                st.write("### Model Accuracy Measurement")
-                st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
-                st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
-                st.write(f"- Overall Model Accuracy (MAPE Based): {overall_accuracy:.2f}%")
+                # st.write("### Model Accuracy Measurement")
+                # st.write(f"- Open Price Prediction Accuracy: {accuracy_open:.2f}%")
+                # st.write(f"- Close Price Prediction Accuracy: {accuracy_close:.2f}%")
+                # st.write(f"- Overall Model Accuracy (MAPE Based): {overall_accuracy:.2f}%")
                 st.write(f"### Price Trend Predictions Accuracy Measurement")
                 st.write(f"- Trend Prediction Accuracy: {trend_accuracy:.2f}%")
 
@@ -222,7 +222,7 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
 
                 # Keep selecting dates until we have at least 1 incorrect prediction
                 while len(incorrect_results) < 1:
-                    sampled_dates = random.sample(dates, min(20, len(dates)))  # Sample 20 or fewer dates
+                    sampled_dates = random.sample(dates, min(30, len(dates)))  # Sample 20 or fewer dates
                     correct_results.clear()
                     incorrect_results.clear()
                     previous_close = None
@@ -371,6 +371,8 @@ if stock_symbol and stock_symbol not in ["Select a stock...", "Search for a new 
                     name='Predicted Close'
                 ))
                 st.plotly_chart(fig, use_container_width=True)
+                # Ensure Trend column reflects correct comparison with previous Close value
+                predictions_df["Trend"] = predictions_df["Close"].diff().apply(lambda x: "Increase" if x > 0 else "Decrease")
 
                 # Optional: Display a table with colored trend values
                 def color_trend(val):
